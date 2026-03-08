@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
+	"github.com/y0s3ph/gitops-bootstrap/internal/installer"
 	"github.com/y0s3ph/gitops-bootstrap/internal/models"
 	"github.com/y0s3ph/gitops-bootstrap/internal/scaffolder"
 	"github.com/y0s3ph/gitops-bootstrap/internal/wizard"
@@ -14,16 +15,18 @@ import (
 
 var successStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#04B575"))
 var dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#999999"))
+var warnStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFAA00"))
 
 var initFlags struct {
-	configFile     string
-	controller     string
-	controllerVer  string
-	secrets        string
-	environments   string
-	repoPath       string
-	clusterContext string
+	configFile      string
+	controller      string
+	controllerVer   string
+	secrets         string
+	environments    string
+	repoPath        string
+	clusterContext  string
 	scaffoldExample bool
+	skipInstall     bool
 }
 
 var initCmd = &cobra.Command{
@@ -50,6 +53,7 @@ func init() {
 	f.StringVar(&initFlags.repoPath, "repo-path", "", "Target repository path (default: ./gitops-repo)")
 	f.StringVar(&initFlags.clusterContext, "cluster-context", "", "Kubernetes cluster context")
 	f.BoolVar(&initFlags.scaffoldExample, "scaffold-example", false, "Scaffold an example application")
+	f.BoolVar(&initFlags.skipInstall, "skip-install", false, "Skip cluster installation (only scaffold the repo)")
 
 	rootCmd.AddCommand(initCmd)
 }
@@ -95,13 +99,52 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	shouldInstall := cfg.ClusterContext != "" && !initFlags.skipInstall
+	if shouldInstall {
+		fmt.Println()
+		fmt.Printf("Installing ArgoCD v%s on cluster %s...\n", cfg.Controller.Version, cfg.ClusterContext)
+		fmt.Println()
+
+		argoInstaller := installer.NewArgoCD(cfg)
+		if err := argoInstaller.Install(func(step string) {
+			fmt.Printf("  %s %s\n", successStyle.Render("✓"), step)
+		}); err != nil {
+			return fmt.Errorf("installing ArgoCD: %w", err)
+		}
+
+		fmt.Println()
+		fmt.Println(successStyle.Render("✓ ArgoCD installed and ready"))
+		printPostInstallSteps(cfg)
+	} else {
+		printScaffoldOnlySteps(cfg)
+	}
+
+	return nil
+}
+
+func printPostInstallSteps(cfg *models.BootstrapConfig) {
 	fmt.Println()
 	fmt.Println(dimStyle.Render("Next steps:"))
 	fmt.Printf("  1. cd %s && git init && git add -A && git commit -m \"feat: initial gitops structure\"\n", cfg.RepoPath)
 	fmt.Println("  2. Push to your Git provider")
 	fmt.Println("  3. Update apps/_root.yaml with your Git repo URL")
+	fmt.Println()
+	fmt.Println(dimStyle.Render("Access ArgoCD UI:"))
+	fmt.Println("  kubectl -n argocd port-forward svc/argocd-server 8080:443")
+	fmt.Println("  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d")
+}
 
-	return nil
+func printScaffoldOnlySteps(cfg *models.BootstrapConfig) {
+	fmt.Println()
+	fmt.Println(dimStyle.Render("Next steps:"))
+	fmt.Printf("  1. cd %s && git init && git add -A && git commit -m \"feat: initial gitops structure\"\n", cfg.RepoPath)
+	fmt.Println("  2. Push to your Git provider")
+	fmt.Println("  3. Update apps/_root.yaml with your Git repo URL")
+	if cfg.ClusterContext == "" {
+		fmt.Println()
+		fmt.Println(warnStyle.Render("  No cluster context provided — skipped installation."))
+		fmt.Println(dimStyle.Render("  To install later: kubectl apply -k " + cfg.RepoPath + "/bootstrap/argocd/"))
+	}
 }
 
 // isNonInteractive returns true if enough flags were provided to skip the wizard.
