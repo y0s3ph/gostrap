@@ -19,10 +19,6 @@ var (
 	subtitleStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#999999")).
 			Italic(true)
-
-	successStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#04B575"))
 )
 
 func banner() string {

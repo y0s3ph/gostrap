@@ -2,6 +2,7 @@ package installer
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 )
@@ -14,19 +15,19 @@ func checkKubectl() error {
 	return nil
 }
 
-func kubectl(context string, args ...string) (string, error) {
+func kubectl(kubeCtx string, args ...string) (string, error) {
 	cmdArgs := args
-	if context != "" {
-		cmdArgs = append([]string{"--context", context}, args...)
+	if kubeCtx != "" {
+		cmdArgs = append([]string{"--context", kubeCtx}, args...)
 	}
 
-	cmd := exec.Command("kubectl", cmdArgs...)
+	cmd := exec.CommandContext(context.Background(), "kubectl", cmdArgs...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%s: %s", err, stderr.String())
+		return "", fmt.Errorf("%w: %s", err, stderr.String())
 	}
 	return stdout.String(), nil
 }
