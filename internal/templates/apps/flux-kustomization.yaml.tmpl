@@ -1,0 +1,20 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: {{.AppName}}-{{.EnvName}}
+  namespace: flux-system
+  labels:
+    app.kubernetes.io/name: {{.AppName}}
+    environment: {{.EnvName}}
+spec:
+  interval: 5m0s
+  sourceRef:
+    kind: GitRepository
+    name: gitops-repo
+    namespace: flux-system
+  path: ./environments/{{.EnvName}}/{{.AppName}}
+  prune: {{.Prune}}
+  targetNamespace: {{.EnvName}}
+{{- if not .AutoSync}}
+  suspend: true
+{{- end}}
