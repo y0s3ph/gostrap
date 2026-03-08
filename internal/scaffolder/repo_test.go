@@ -67,6 +67,8 @@ func TestScaffold_CreatesBootstrapManifests(t *testing.T) {
 		"bootstrap/argocd/namespace.yaml",
 		"bootstrap/argocd/kustomization.yaml",
 		"bootstrap/argocd/argocd-cm-patch.yaml",
+		"bootstrap/argocd/argocd-rbac-cm-patch.yaml",
+		"bootstrap/argocd/appproject-default.yaml",
 	}
 
 	for _, f := range expectedFiles {
@@ -209,4 +211,86 @@ func TestScaffold_GitkeepInEmptyDirs(t *testing.T) {
 		_, err := os.Stat(gitkeep)
 		require.NoError(t, err, ".gitkeep should exist in %s", dir)
 	}
+}
+
+func TestScaffold_RBACPolicyContent(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(repoPath, "bootstrap/argocd/argocd-rbac-cm-patch.yaml"))
+	require.NoError(t, err)
+
+	content := string(data)
+	assert.Contains(t, content, "name: argocd-rbac-cm")
+	assert.Contains(t, content, "policy.default: role:readonly")
+	assert.Contains(t, content, "role:admin")
+	assert.Contains(t, content, "role:developer")
+	assert.Contains(t, content, "argocd-admins")
+}
+
+func TestScaffold_AppProjectScopedToEnvironments(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(repoPath, "bootstrap/argocd/appproject-default.yaml"))
+	require.NoError(t, err)
+
+	content := string(data)
+	assert.Contains(t, content, "kind: AppProject")
+	assert.Contains(t, content, "name: default")
+	assert.Contains(t, content, "namespace: dev")
+	assert.Contains(t, content, "namespace: staging")
+	assert.Contains(t, content, "namespace: production")
+	assert.Contains(t, content, "namespace: argocd")
+	assert.Contains(t, content, "warn: true", "orphaned resources should be enabled")
+}
+
+func TestScaffold_AppProjectCustomEnvironments(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+	cfg.Environments = []models.EnvironmentConfig{
+		{Name: "qa"},
+		{Name: "canary"},
+	}
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(repoPath, "bootstrap/argocd/appproject-default.yaml"))
+	require.NoError(t, err)
+
+	content := string(data)
+	assert.Contains(t, content, "namespace: qa")
+	assert.Contains(t, content, "namespace: canary")
+	assert.NotContains(t, content, "namespace: dev")
+	assert.NotContains(t, content, "namespace: production")
+}
+
+func TestScaffold_KustomizationIncludesRBAC(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(filepath.Join(repoPath, "bootstrap/argocd/kustomization.yaml"))
+	require.NoError(t, err)
+
+	content := string(data)
+	assert.Contains(t, content, "appproject-default.yaml")
+	assert.Contains(t, content, "argocd-rbac-cm-patch.yaml")
 }
