@@ -1,0 +1,212 @@
+package scaffolder
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/y0s3ph/gitops-bootstrap/internal/models"
+)
+
+func testConfig(repoPath string) *models.BootstrapConfig {
+	return &models.BootstrapConfig{
+		Controller: models.ControllerConfig{
+			Type:    models.ControllerArgoCD,
+			Version: "2.13.1",
+		},
+		Secrets: models.SecretsConfig{
+			Type: models.SecretsSealedSecrets,
+		},
+		Environments: models.DefaultEnvironments(),
+		RepoPath:     repoPath,
+	}
+}
+
+func TestScaffold_CreatesDirectoryTree(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	expectedDirs := []string{
+		"bootstrap/argocd",
+		"bootstrap/sealed-secrets",
+		"apps",
+		"environments/base",
+		"environments/dev",
+		"environments/staging",
+		"environments/production",
+		"platform",
+		"policies",
+		"docs",
+	}
+
+	for _, dir := range expectedDirs {
+		fullPath := filepath.Join(repoPath, dir)
+		info, err := os.Stat(fullPath)
+		require.NoError(t, err, "directory %s should exist", dir)
+		assert.True(t, info.IsDir(), "%s should be a directory", dir)
+	}
+}
+
+func TestScaffold_CreatesBootstrapManifests(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	expectedFiles := []string{
+		"bootstrap/argocd/namespace.yaml",
+		"bootstrap/argocd/kustomization.yaml",
+		"bootstrap/argocd/argocd-cm-patch.yaml",
+	}
+
+	for _, f := range expectedFiles {
+		fullPath := filepath.Join(repoPath, f)
+		_, err := os.Stat(fullPath)
+		require.NoError(t, err, "file %s should exist", f)
+	}
+}
+
+func TestScaffold_CreatesRootApplication(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	rootApp := filepath.Join(repoPath, "apps/_root.yaml")
+	data, err := os.ReadFile(rootApp)
+	require.NoError(t, err)
+
+	content := string(data)
+	assert.Contains(t, content, "kind: Application")
+	assert.Contains(t, content, "name: root")
+	assert.Contains(t, content, "path: apps")
+	assert.Contains(t, content, "selfHeal: true")
+}
+
+func TestScaffold_InjectsControllerVersion(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+	cfg.Controller.Version = "2.10.0"
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	kustomization := filepath.Join(repoPath, "bootstrap/argocd/kustomization.yaml")
+	data, err := os.ReadFile(kustomization)
+	require.NoError(t, err)
+
+	assert.Contains(t, string(data), "v2.10.0/manifests/install.yaml")
+}
+
+func TestScaffold_ESOBootstrapDirectory(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+	cfg.Secrets.Type = models.SecretsESO
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	esoDir := filepath.Join(repoPath, "bootstrap/external-secrets")
+	info, err := os.Stat(esoDir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
+
+	sealedDir := filepath.Join(repoPath, "bootstrap/sealed-secrets")
+	_, err = os.Stat(sealedDir)
+	assert.True(t, os.IsNotExist(err), "sealed-secrets dir should not exist when ESO is selected")
+}
+
+func TestScaffold_CustomEnvironments(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+	cfg.Environments = []models.EnvironmentConfig{
+		{Name: "test"},
+		{Name: "canary"},
+	}
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	for _, env := range []string{"test", "canary"} {
+		envDir := filepath.Join(repoPath, "environments", env)
+		info, err := os.Stat(envDir)
+		require.NoError(t, err, "environment dir %s should exist", env)
+		assert.True(t, info.IsDir())
+	}
+}
+
+func TestScaffold_Idempotent(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s1 := New(cfg)
+	result1, err := s1.Scaffold()
+	require.NoError(t, err)
+	assert.NotEmpty(t, result1.Created)
+	assert.Empty(t, result1.Skipped)
+
+	s2 := New(cfg)
+	result2, err := s2.Scaffold()
+	require.NoError(t, err)
+	assert.Empty(t, result2.Created, "second run should not create any files")
+	assert.NotEmpty(t, result2.Skipped, "second run should skip all files")
+	assert.Equal(t, len(result1.Created), len(result2.Skipped), "all created files should be skipped on re-run")
+}
+
+func TestScaffold_DoesNotOverwriteExisting(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	customContent := []byte("# customized by user\n")
+	rootApp := filepath.Join(repoPath, "apps/_root.yaml")
+	require.NoError(t, os.WriteFile(rootApp, customContent, 0644))
+
+	s2 := New(cfg)
+	_, err = s2.Scaffold()
+	require.NoError(t, err)
+
+	data, err := os.ReadFile(rootApp)
+	require.NoError(t, err)
+	assert.Equal(t, customContent, data, "user customizations should be preserved")
+}
+
+func TestScaffold_GitkeepInEmptyDirs(t *testing.T) {
+	root := t.TempDir()
+	repoPath := filepath.Join(root, "gitops-repo")
+	cfg := testConfig(repoPath)
+
+	s := New(cfg)
+	_, err := s.Scaffold()
+	require.NoError(t, err)
+
+	for _, dir := range []string{"platform", "policies", "docs"} {
+		gitkeep := filepath.Join(repoPath, dir, ".gitkeep")
+		_, err := os.Stat(gitkeep)
+		require.NoError(t, err, ".gitkeep should exist in %s", dir)
+	}
+}
