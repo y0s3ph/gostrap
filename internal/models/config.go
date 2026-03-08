@@ -10,7 +10,7 @@ const (
 )
 
 const DefaultArgoCDVersion = "2.13.1"
-const DefaultFluxVersion = "2.4.0"
+const DefaultFluxVersion = "2.8.1"
 const DefaultSealedSecretsVersion = "0.27.3"
 
 func DefaultControllerVersion(ct ControllerType) string {
