@@ -6,9 +6,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/y0s3ph/gitops-bootstrap/internal/models"
+	"github.com/y0s3ph/gitops-bootstrap/internal/scaffolder"
 	"github.com/y0s3ph/gitops-bootstrap/internal/wizard"
 )
 
@@ -75,15 +75,31 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println(successStyle.Render("✓ Configuration complete"))
 	fmt.Println()
 
-	out, err := yaml.Marshal(cfg)
+	s := scaffolder.New(cfg)
+	result, err := s.Scaffold()
 	if err != nil {
-		return fmt.Errorf("marshalling config: %w", err)
+		return fmt.Errorf("scaffolding repo: %w", err)
 	}
-	fmt.Println(dimStyle.Render("Generated configuration:"))
-	fmt.Println(string(out))
 
-	fmt.Println(dimStyle.Render("Next: scaffolder and installer will use this configuration."))
-	fmt.Println(dimStyle.Render("(not yet implemented — coming in Phase 1)"))
+	if len(result.Created) > 0 {
+		fmt.Println(successStyle.Render("✓ Repository structure generated"))
+		for _, f := range result.Created {
+			fmt.Printf("  %s %s\n", successStyle.Render("+"), f)
+		}
+	}
+	if len(result.Skipped) > 0 {
+		fmt.Println()
+		fmt.Println(dimStyle.Render("Skipped (already exist):"))
+		for _, f := range result.Skipped {
+			fmt.Printf("  %s %s\n", dimStyle.Render("·"), f)
+		}
+	}
+
+	fmt.Println()
+	fmt.Println(dimStyle.Render("Next steps:"))
+	fmt.Printf("  1. cd %s && git init && git add -A && git commit -m \"feat: initial gitops structure\"\n", cfg.RepoPath)
+	fmt.Println("  2. Push to your Git provider")
+	fmt.Println("  3. Update apps/_root.yaml with your Git repo URL")
 
 	return nil
 }
