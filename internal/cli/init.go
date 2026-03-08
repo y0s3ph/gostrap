@@ -105,20 +105,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 			return err
 		}
 
-		if cfg.Secrets.Type == models.SecretsSealedSecrets {
-			fmt.Println()
-			fmt.Printf("Setting up Sealed Secrets v%s...\n", cfg.Secrets.Version)
-			fmt.Println()
-
-			ssInstaller := installer.NewSealedSecrets(cfg)
-			if err := ssInstaller.Install(func(step string) {
-				fmt.Printf("  %s %s\n", successStyle.Render("✓"), step)
-			}); err != nil {
-				return fmt.Errorf("installing Sealed Secrets: %w", err)
-			}
-
-			fmt.Println()
-			fmt.Println(successStyle.Render("✓ Sealed Secrets ready"))
+		if err := installSecretsManager(cfg); err != nil {
+			return err
 		}
 
 		printPostInstallSteps(cfg)
@@ -165,6 +153,40 @@ func installController(cfg *models.BootstrapConfig) error {
 	return nil
 }
 
+func installSecretsManager(cfg *models.BootstrapConfig) error {
+	progress := func(step string) {
+		fmt.Printf("  %s %s\n", successStyle.Render("✓"), step)
+	}
+
+	switch cfg.Secrets.Type {
+	case models.SecretsSealedSecrets:
+		fmt.Println()
+		fmt.Printf("Setting up Sealed Secrets v%s...\n", cfg.Secrets.Version)
+		fmt.Println()
+
+		if err := installer.NewSealedSecrets(cfg).Install(progress); err != nil {
+			return fmt.Errorf("installing Sealed Secrets: %w", err)
+		}
+
+		fmt.Println()
+		fmt.Println(successStyle.Render("✓ Sealed Secrets ready"))
+
+	case models.SecretsESO:
+		fmt.Println()
+		fmt.Printf("Setting up External Secrets Operator v%s...\n", cfg.Secrets.Version)
+		fmt.Println()
+
+		if err := installer.NewESO(cfg).Install(progress); err != nil {
+			return fmt.Errorf("installing External Secrets Operator: %w", err)
+		}
+
+		fmt.Println()
+		fmt.Println(successStyle.Render("✓ External Secrets Operator ready"))
+	}
+
+	return nil
+}
+
 func controllerBootstrapPath(cfg *models.BootstrapConfig) string {
 	if cfg.Controller.Type == models.ControllerFlux {
 		return cfg.RepoPath + "/bootstrap/flux-system/"
@@ -192,7 +214,8 @@ func printPostInstallSteps(cfg *models.BootstrapConfig) {
 		fmt.Println("  kubectl -n flux-system get kustomizations")
 	}
 
-	if cfg.Secrets.Type == models.SecretsSealedSecrets {
+	switch cfg.Secrets.Type {
+	case models.SecretsSealedSecrets:
 		fmt.Println()
 		fmt.Println(dimStyle.Render("Sealed Secrets — backup your key (critical!):"))
 		fmt.Println("  kubectl -n kube-system get secret -l sealedsecrets.bitnami.com/sealed-secrets-key -o yaml > sealed-secrets-key-backup.yaml")
@@ -200,6 +223,18 @@ func printPostInstallSteps(cfg *models.BootstrapConfig) {
 		fmt.Println()
 		fmt.Println(dimStyle.Render("Seal a secret:"))
 		fmt.Printf("  kubeseal --cert %s/bootstrap/sealed-secrets/pub-cert.pem --format yaml < secret.yaml\n", cfg.RepoPath)
+
+	case models.SecretsESO:
+		fmt.Println()
+		fmt.Println(dimStyle.Render("External Secrets Operator — configure your provider:"))
+		fmt.Printf("  1. Edit %s/bootstrap/external-secrets/clustersecretstore-example.yaml\n", cfg.RepoPath)
+		fmt.Println("  2. Uncomment and configure your secrets provider (AWS SM, Vault, GCP, Azure)")
+		fmt.Println("  3. kubectl apply -f bootstrap/external-secrets/clustersecretstore-example.yaml")
+		fmt.Println()
+		fmt.Println(dimStyle.Render("Check ESO status:"))
+		fmt.Println("  kubectl -n external-secrets get all")
+		fmt.Println("  kubectl get clustersecretstores")
+		fmt.Println("  kubectl get externalsecrets --all-namespaces")
 	}
 }
 
