@@ -197,8 +197,8 @@ This separation gives you auditable deployments (every cluster change is a Git c
 | Phase | Milestone | Status | Summary |
 |---|---|---|---|
 | **1 — Core Bootstrap** | [v0.1.0](https://github.com/y0s3ph/gostrap/milestone/1?closed=1) | Done | Interactive wizard, repo scaffolding, ArgoCD installer, Sealed Secrets, documentation generation |
-| **2 — Flux & Advanced Secrets** | [v0.2.0](https://github.com/y0s3ph/gostrap/milestone/2) | In Progress | Flux CD **(done)**, External Secrets Operator **(done)**, SOPS **(done)**, Helm chart support **(done)**, multi-cluster |
-| **3 — Day-2 Operations** | [v0.3.0](https://github.com/y0s3ph/gostrap/milestone/3) | Planned | `add-app`, `add-env`, `validate`, `diff`, `promote` commands, pre-commit hooks |
+| **2 — Flux & Advanced Secrets** | [v0.2.0](https://github.com/y0s3ph/gostrap/milestone/2?closed=1) | Done | Flux CD, External Secrets Operator, SOPS, Helm chart support |
+| **3 — Day-2 Operations** | [v0.3.0](https://github.com/y0s3ph/gostrap/milestone/3) | Planned | `add-app`, `add-env`, `validate`, `diff`, `promote` commands, pre-commit hooks, multi-cluster hub-spoke |
 | **4 — Platform Integration** | [v0.4.0](https://github.com/y0s3ph/gostrap/milestone/4) | Planned | Notifications, Image Updater, CI workflow templates, webhooks, terminal dashboard |
 
 ## Architecture
@@ -344,7 +344,7 @@ policies:
 $ gostrap init
 
   ╭─────────────────────────────────────────╮
-  │            gostrap v0.1.0               │
+  │            gostrap v0.2.0               │
   │   From zero to GitOps in one command    │
   ╰─────────────────────────────────────────╯
 
