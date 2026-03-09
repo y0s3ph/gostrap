@@ -10,6 +10,8 @@ From zero to GitOps in one command — opinionated CLI to bootstrap a production
 
 ## Table of Contents
 
+- [Installation](#installation)
+- [Quick Start](#quick-start)
 - [The Problem](#the-problem)
 - [Core Principles](#core-principles)
 - [What It Sets Up](#what-it-sets-up)
@@ -20,7 +22,7 @@ From zero to GitOps in one command — opinionated CLI to bootstrap a production
 - [Architecture](#architecture)
   - [Component Responsibilities](#component-responsibilities)
 - [Tech Stack](#tech-stack)
-- [Planned CLI Interface](#planned-cli-interface)
+- [CLI Interface](#cli-interface)
 - [Design Decisions](#design-decisions)
   - [Why App of Apps (ArgoCD) / Kustomization chain (Flux)?](#why-app-of-apps-argocd--kustomization-chain-flux)
   - [Why Kustomize as default (with Helm as option)?](#why-kustomize-as-default-with-helm-as-option)
@@ -40,6 +42,78 @@ From zero to GitOps in one command — opinionated CLI to bootstrap a production
 - [License](#license)
 
 ---
+
+## Installation
+
+### From source (recommended for now)
+
+```bash
+go install github.com/y0s3ph/gostrap/cmd/gostrap@latest
+```
+
+Or clone and build:
+
+```bash
+git clone https://github.com/y0s3ph/gostrap.git
+cd gostrap
+go build -o gostrap ./cmd/gostrap/
+sudo mv gostrap /usr/local/bin/
+```
+
+### Prerequisites
+
+- [Go 1.24+](https://go.dev/dl/) (for building from source)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) (for cluster installation)
+- A Kubernetes cluster (or [kind](https://kind.sigs.k8s.io/) for local testing)
+
+## Quick Start
+
+```bash
+# 1. Bootstrap a GitOps repo + install ArgoCD on your cluster
+gostrap init
+
+# 2. Add applications to the repo
+gostrap add-app payments --port 3000 --repo-path ./gitops-repo
+gostrap add-app frontend --port 3000 --repo-path ./gitops-repo
+
+# 3. Commit and push — the GitOps controller picks up the rest
+cd gitops-repo
+git init && git add -A && git commit -m "feat: initial gitops structure"
+git remote add origin <your-repo-url>
+git push -u origin main
+```
+
+The interactive wizard guides you through every choice:
+
+```
+$ gostrap init
+
+  gostrap   From zero to GitOps in one command
+
+  ? Select GitOps controller:    ArgoCD / Flux CD
+  ? Select secrets management:   Sealed Secrets / ESO / SOPS
+  ? Application manifest format: Kustomize / Helm
+  ? Environments to create:      dev, staging, production
+  ? Scaffold an example app?     Yes
+  ? Target repo path:            ./gitops-repo
+  ? Cluster context:             kind-gitops-dev
+
+  ✓ ArgoCD installed and ready
+  ✓ Sealed Secrets ready
+  ✓ Repository structure generated
+```
+
+For CI/automation, skip the wizard entirely:
+
+```bash
+gostrap init \
+  --controller argocd \
+  --secrets sealed-secrets \
+  --manifest-type kustomize \
+  --environments dev,staging,production \
+  --repo-path ./gitops-repo \
+  --cluster-context prod-eu-west-1
+```
 
 ## The Problem
 
@@ -143,11 +217,13 @@ gitops-repo/
 │   ├── disallow-latest-tag.yaml
 │   └── require-resource-limits.yaml
 │
-└── docs/
-    ├── ARCHITECTURE.md             # How this repo is structured and why
-    ├── ADDING-AN-APP.md            # Step-by-step guide for dev teams
-    ├── SECRETS.md                  # How to manage secrets in this setup
-    └── TROUBLESHOOTING.md          # Common issues and fixes
+├── docs/
+│   ├── ARCHITECTURE.md             # How this repo is structured and why
+│   ├── ADDING-AN-APP.md            # Step-by-step guide for dev teams
+│   ├── SECRETS.md                  # How to manage secrets in this setup
+│   └── TROUBLESHOOTING.md          # Common issues and fixes
+│
+└── .gostrap.yaml                   # Repo config (used by add-app, add-env)
 ```
 
 ## How It Fits In Your Workflow
@@ -198,7 +274,7 @@ This separation gives you auditable deployments (every cluster change is a Git c
 |---|---|---|---|
 | **1 — Core Bootstrap** | [v0.1.0](https://github.com/y0s3ph/gostrap/milestone/1?closed=1) | Done | Interactive wizard, repo scaffolding, ArgoCD installer, Sealed Secrets, documentation generation |
 | **2 — Flux & Advanced Secrets** | [v0.2.0](https://github.com/y0s3ph/gostrap/milestone/2?closed=1) | Done | Flux CD, External Secrets Operator, SOPS, Helm chart support |
-| **3 — Day-2 Operations** | [v0.3.0](https://github.com/y0s3ph/gostrap/milestone/3) | Planned | `add-app`, `add-env`, `validate`, `diff`, `promote` commands, pre-commit hooks, multi-cluster hub-spoke |
+| **3 — Day-2 Operations** | [v0.3.0](https://github.com/y0s3ph/gostrap/milestone/3) | In Progress | `add-app` **(done)**, `add-env`, `validate`, `diff`, `promote` commands, pre-commit hooks, multi-cluster hub-spoke |
 | **4 — Platform Integration** | [v0.4.0](https://github.com/y0s3ph/gostrap/milestone/4) | Planned | Notifications, Image Updater, CI workflow templates, webhooks, terminal dashboard |
 
 ## Architecture
@@ -244,7 +320,7 @@ graph TD
 | Testing | **testing** (stdlib) + **testify** | Standard Go testing with `t.TempDir()` for repo scaffolding tests |
 | Linting | **golangci-lint** | Meta-linter aggregating 50+ linters in a single fast run |
 
-## Planned CLI Interface
+## CLI Interface
 
 ```bash
 # Interactive wizard (recommended for first-time setup)
@@ -263,23 +339,22 @@ gostrap init \
 # From config file (for reproducibility / team standardization)
 gostrap init --config bootstrap-config.yaml
 
-# Add a new application to the existing structure
-gostrap add-app my-new-service \
-  --type deployment \
-  --port 8080 \
-  --has-ingress \
-  --has-hpa
+# Add a new application (interactive — prompts for name and port)
+gostrap add-app --repo-path ./gitops-repo
 
-# Add a new environment
+# Add a new application (non-interactive)
+gostrap add-app payments --port 3000 --repo-path ./gitops-repo
+
+# Add a new environment (planned — v0.3.0)
 gostrap add-env qa --base staging
 
-# Validate repo structure
+# Validate repo structure (planned — v0.3.0)
 gostrap validate ./gitops-repo
 
-# Compare environments
+# Compare environments (planned — v0.3.0)
 gostrap diff dev production --app my-api
 
-# Promote an app between environments
+# Promote an app between environments (planned — v0.3.0)
 gostrap promote my-api --from staging --to production
 ```
 
@@ -449,6 +524,12 @@ gostrap/
 │   └── gostrap/
 │       └── main.go                 # Entrypoint
 ├── internal/
+│   ├── cli/
+│   │   ├── root.go                 # Root command registration
+│   │   ├── init.go                 # gostrap init command
+│   │   └── add_app.go              # gostrap add-app command
+│   ├── config/
+│   │   └── config.go               # .gostrap.yaml persistence (save/load repo config)
 │   ├── wizard/
 │   │   ├── wizard.go               # Interactive prompts (Bubble Tea)
 │   │   └── config.go               # Config file parsing & validation
@@ -505,12 +586,15 @@ gostrap/
 
 ## Development
 
+> For contributors and local development. If you just want to use gostrap, see [Installation](#installation).
+
 ### Prerequisites
 
 - [Go 1.24+](https://go.dev/dl/)
 - [Docker](https://docs.docker.com/get-docker/)
 - [kind](https://kind.sigs.k8s.io/) — `go install sigs.k8s.io/kind@latest`
 - [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- [golangci-lint](https://golangci-lint.run/welcome/install/) — `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 
 ### Build
 
@@ -549,6 +633,9 @@ go run ./cmd/gostrap/ init \
   --environments dev,staging,production \
   --repo-path ./test-repo \
   --cluster-context kind-gitops-dev
+
+# Add a new application to the repo
+go run ./cmd/gostrap/ add-app payments --port 3000 --repo-path ./test-repo
 ```
 
 ## Contributing
