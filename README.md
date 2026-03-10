@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="gostrap.png" alt="gostrap logo" width="200">
+  <img src="gostrap.png" alt="gostrap logo" width="480">
 </p>
 
 # gostrap
