@@ -32,6 +32,7 @@ From zero to GitOps in one command — opinionated CLI to bootstrap a production
 - [CLI Interface](#cli-interface)
 - [Design Decisions](#design-decisions)
   - [Why App of Apps (ArgoCD) / Kustomization chain (Flux)?](#why-app-of-apps-argocd--kustomization-chain-flux)
+  - [ArgoCD vs Flux: which one should I choose?](#argocd-vs-flux-which-one-should-i-choose)
   - [Why Kustomize as default (with Helm as option)?](#why-kustomize-as-default-with-helm-as-option)
   - [Why Sealed Secrets as default?](#why-sealed-secrets-as-default)
   - [Secrets management: scalability and limitations](#secrets-management-scalability-and-limitations)
@@ -510,6 +511,24 @@ For **ArgoCD**, gostrap uses the [App of Apps pattern](https://argo-cd.readthedo
 - Single entry point for the entire cluster state.
 - Self-service: dev teams add a YAML to `apps/` to onboard.
 - Declarative: the list of applications is version-controlled.
+
+### ArgoCD vs Flux: which one should I choose?
+
+gostrap supports both controllers as first-class options. ArgoCD is marked as "recommended" in the wizard because it offers a gentler onboarding experience, but Flux is equally well supported.
+
+|  | **ArgoCD** | **Flux CD** |
+|---|---|---|
+| **CNCF status** | Graduated | Graduated |
+| **Web UI** | Built-in dashboard with sync status, diff viewer, and rollback | No native UI (add [Weave GitOps](https://github.com/weaveworks/weave-gitops) or similar) |
+| **Mental model** | One `Application` CRD = one deployed app, visual feedback | Modular controllers (source, kustomize, helm, notification) composed via CRDs |
+| **RBAC** | Granular: SSO/OIDC, projects, per-repo/per-cluster policies | Delegates to Kubernetes RBAC; multi-tenancy via namespaced `Kustomization` |
+| **Helm support** | Renders charts server-side; supports `values.yaml` overlays | `HelmRelease` CRD with dependency management and automated upgrades |
+| **Multi-cluster** | Centralized hub managing remote clusters from a single UI | Agent-per-cluster (decentralized); each cluster reconciles independently |
+| **Notifications** | Built-in notification engine (Slack, webhook, GitHub) | Separate `notification-controller` with provider CRDs |
+| **Image automation** | Separate [Image Updater](https://argocd-image-updater.readthedocs.io/) project | Built-in `image-reflector-controller` + `image-automation-controller` |
+| **Best for** | Teams wanting visual operations, onboarding newcomers to GitOps | Teams preferring pure Git workflows, no UI dependency, or advanced automation |
+
+**TL;DR**: Choose **ArgoCD** if you value a web UI and visual feedback. Choose **Flux** if you prefer everything-as-code with no UI dependency and want tighter integration with Helm and image automation.
 
 ### Why Kustomize as default (with Helm as option)?
 
